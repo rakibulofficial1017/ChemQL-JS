@@ -10,7 +10,7 @@ commands, and CLI workflows. It has no runtime package dependencies.
 Node.js 18 or newer is required.
 
 ```sh
-cd Language/chemql-js
+cd chemql-js
 npm install
 npm link
 ```
@@ -109,3 +109,5 @@ is included in `html/`.
 ```sh
 npm test
 ```
+Created by [Mohammad Rakibul Islam](https://github.com/rakibulofficial1017).
+Source code: [rakibulofficial1017/ChemQL-JS](https://github.com/rakibulofficial1017/ChemQL-JS).

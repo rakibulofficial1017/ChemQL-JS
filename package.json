@@ -1,0 +1,27 @@
+{
+  "name": "chemql",
+  "version": "0.1.0",
+  "description": "A chemistry-focused query language and REPL for JavaScript",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "bin": {
+    "chemql-js": "./bin/chemql.js"
+  },
+  "files": [
+    "bin/",
+    "data/",
+    "examples/",
+    "html/",
+    "src/"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}

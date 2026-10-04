@@ -1,0 +1,5 @@
+[globalThis.lightElements = []]
+[for (const element of {{search elements limit 3}})]
+[globalThis.lightElements.push(element.symbol)]
+[endblock]
+[console.log(lightElements)]

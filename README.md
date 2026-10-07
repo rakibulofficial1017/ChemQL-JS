@@ -30,12 +30,15 @@ A trailing backslash continues a command onto the next line.
 ## JavaScript API
 
 ```js
-import { execute_query_text, Element } from "chemql-js";
+import { execute_query_text, balance_stoichiometry, Element } from "chemql-js";
 
 const hydrogen = await execute_query_text('search elements name = "Hydrogen"');
 if (hydrogen instanceof Element) {
   console.log(hydrogen.symbol); // H
 }
+
+const reaction = balance_stoichiometry(["O2", "H2"], ["H2O"], true);
+console.log(reaction);
 ```
 
 `execute_query_text` returns the raw ChemQL value. `execute_query` follows the
@@ -69,7 +72,17 @@ single character, `#` one digit, and `?` one letter.
 
 The command API also supports `source`, `list all`, `set temperature`,
 `set pressure`, `set catalysts`, `add catalyst`, `remove catalyst`,
-`conditions`, and `react`.
+`conditions`, `react`, and reaction balancing:
+
+```text
+balance O2 + H2 -> H2O //reversible
+balance O2 + H2 <-> H2O //irreversible
+```
+
+`balance_stoichiometry(reactants, products, reversible = null)` returns a
+`Reaction` with the smallest positive integer coefficients. The optional
+annotations override the direction shown by the input arrow; without an
+annotation, `->` is irreversible and `<->` is reversible.
 
 ## JavaScript hybrid mode
 

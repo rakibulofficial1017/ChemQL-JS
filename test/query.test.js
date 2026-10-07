@@ -4,8 +4,10 @@ import {
   Element,
   Molecule,
   REACTIONS,
+  Reaction,
   ReturnTable,
   Unknown,
+  balance_stoichiometry,
   execute,
   execute_query,
   execute_query_text,
@@ -58,6 +60,41 @@ test("reactions support condition setup and product lookup", async () => {
   assert.equal(product.formula, "NH3");
   assert.ok(REACTIONS.some((reaction) => reaction.id === "RHEA:10000"));
   assert.match(await execute(["conditions"]), /Catalysts: iron/);
+});
+
+test("balances reactions through the function API and ChemQL syntax", async () => {
+  const apiReaction = balance_stoichiometry(["O2", "H2"], ["H2O"], true);
+  assert.ok(apiReaction instanceof Reaction);
+  assert.deepEqual(
+    apiReaction.reactants.map((part) => part.stoichiometric_coefficient),
+    [1, 2],
+  );
+  assert.deepEqual(
+    apiReaction.products.map((part) => part.stoichiometric_coefficient),
+    [2],
+  );
+  assert.equal(apiReaction.reversible, true);
+
+  const reversible = await process_lines(["balance O2 + H2 -> H2O //reversible"]);
+  assert.equal(reversible.reversible, true);
+  assert.match(reversible.equation, /1 O₂ \+ 2 H₂ ⇌ 2 H₂O/);
+
+  const irreversible = await execute_query_text(
+    "balance O2 + H2 <-> H2O //irreversible",
+  );
+  assert.equal(irreversible.reversible, false);
+  assert.match(irreversible.equation, /1 O₂ \+ 2 H₂ → 2 H₂O/);
+
+  const grouped = balance_stoichiometry(
+    ["Ca(OH)2", "H3PO4"],
+    ["Ca3(PO4)2", "H2O"],
+  );
+  assert.deepEqual(
+    [...grouped.reactants, ...grouped.products].map(
+      (part) => part.stoichiometric_coefficient,
+    ),
+    [3, 2, 1, 6],
+  );
 });
 
 test("supports JavaScript snippets and query interpolation", async () => {

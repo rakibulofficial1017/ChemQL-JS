@@ -139,6 +139,167 @@ export const reactionKeys = [
   "id", "name", "equation", "reaction_type", "reversible", "reactants",
   "products", "conditions", "notes", "source",
 ];
+
+function formulaCounts(formula) {
+  const symbols = new Set(ELEMENTS.map((element) => element.symbol));
+  if (typeof formula !== "string" || !formula) {
+    throw new TypeError("Chemical formulas must be non-empty strings");
+  }
+  const parseGroup = (start, nested = false) => {
+    const counts = new Map();
+    let index = start;
+    while (index < formula.length) {
+      const char = formula[index];
+      if (char === ")") {
+        if (!nested) throw new Error(`Unmatched closing parenthesis in formula \`${formula}\``);
+        return [counts, index];
+      }
+      if (char === "(") {
+        const [group, end] = parseGroup(index + 1, true);
+        if (formula[end] !== ")") throw new Error(`Unclosed parenthesis in formula \`${formula}\``);
+        index = end + 1;
+        const match = formula.slice(index).match(/^\d+/);
+        const multiplier = match ? Number(match[0]) : 1;
+        if (multiplier <= 0) throw new Error(`Invalid atom count in formula \`${formula}\``);
+        if (match) index += match[0].length;
+        for (const [symbol, amount] of group) {
+          counts.set(symbol, (counts.get(symbol) ?? 0) + amount * multiplier);
+        }
+        continue;
+      }
+      if (!/[A-Z]/.test(char)) throw new Error(`Invalid chemical formula \`${formula}\``);
+      let end = index + 1;
+      if (/[a-z]/.test(formula[end] ?? "")) end += 1;
+      const symbol = formula.slice(index, end);
+      if (!symbols.has(symbol)) throw new Error(`Unknown element \`${symbol}\` in formula \`${formula}\``);
+      index = end;
+      const match = formula.slice(index).match(/^\d+/);
+      const amount = match ? Number(match[0]) : 1;
+      if (amount <= 0) throw new Error(`Invalid atom count in formula \`${formula}\``);
+      if (match) index += match[0].length;
+      counts.set(symbol, (counts.get(symbol) ?? 0) + amount);
+    }
+    if (nested) throw new Error(`Unclosed parenthesis in formula \`${formula}\``);
+    return [counts, index];
+  };
+  const [counts, end] = parseGroup(0);
+  if (end !== formula.length || counts.size === 0) throw new Error(`Invalid chemical formula \`${formula}\``);
+  return counts;
+}
+
+function stoichiometricSpecies(side) {
+  const species = typeof side === "string"
+    ? side.split("+").map((item) => item.trim())
+    : Array.from(side, (item) => String(item).trim());
+  if (!species.length || species.some((item) => !item)) {
+    throw new Error("Both sides of a reaction must contain molecules");
+  }
+  return species;
+}
+
+function bigintGcd(left, right) {
+  let a = left < 0n ? -left : left;
+  let b = right < 0n ? -right : right;
+  while (b) [a, b] = [b, a % b];
+  return a;
+}
+
+function rational(numerator, denominator = 1n) {
+  const sign = denominator < 0n ? -1n : 1n;
+  const divisor = bigintGcd(numerator, denominator);
+  return { n: numerator / divisor * sign, d: denominator / divisor * sign };
+}
+
+const rationalAdd = (left, right) => rational(left.n * right.d + right.n * left.d, left.d * right.d);
+const rationalSubtract = (left, right) => rational(left.n * right.d - right.n * left.d, left.d * right.d);
+const rationalMultiply = (left, right) => rational(left.n * right.n, left.d * right.d);
+const rationalDivide = (left, right) => rational(left.n * right.d, left.d * right.n);
+const rationalNegate = (value) => rational(-value.n, value.d);
+const rationalIsZero = (value) => value.n === 0n;
+
+export function balance_stoichiometry(reactants, products, reversible = null) {
+  const reactantFormulas = stoichiometricSpecies(reactants);
+  const productFormulas = stoichiometricSpecies(products);
+  const formulas = [...reactantFormulas, ...productFormulas];
+  const counts = formulas.map(formulaCounts);
+  const elements = [...new Set(counts.flatMap((formula) => [...formula.keys()]))];
+  const matrix = elements.map((element) => counts.map((formula, index) =>
+    rational(BigInt((formula.get(element) ?? 0) * (index < reactantFormulas.length ? 1 : -1)))));
+  const pivotColumns = [];
+  let pivotRow = 0;
+  for (let column = 0; column < formulas.length; column += 1) {
+    const selected = matrix.findIndex((row, index) => index >= pivotRow && !rationalIsZero(row[column]));
+    if (selected < 0) continue;
+    [matrix[pivotRow], matrix[selected]] = [matrix[selected], matrix[pivotRow]];
+    const divisor = matrix[pivotRow][column];
+    matrix[pivotRow] = matrix[pivotRow].map((value) => rationalDivide(value, divisor));
+    for (let row = 0; row < matrix.length; row += 1) {
+      if (row === pivotRow || rationalIsZero(matrix[row][column])) continue;
+      const factor = matrix[row][column];
+      matrix[row] = matrix[row].map((value, index) =>
+        rationalSubtract(value, rationalMultiply(factor, matrix[pivotRow][index])));
+    }
+    pivotColumns.push(column);
+    pivotRow += 1;
+    if (pivotRow === matrix.length) break;
+  }
+  const freeColumns = formulas.map((_, index) => index).filter((index) => !pivotColumns.includes(index));
+  if (freeColumns.length !== 1) {
+    throw new Error("Reaction does not have a unique stoichiometric balance");
+  }
+  const coefficients = formulas.map(() => rational(0n));
+  const freeColumn = freeColumns[0];
+  coefficients[freeColumn] = rational(1n);
+  for (let row = 0; row < pivotColumns.length; row += 1) {
+    coefficients[pivotColumns[row]] = rationalNegate(matrix[row][freeColumn]);
+  }
+  if (coefficients.every((value) => value.n < 0n)) {
+    for (let index = 0; index < coefficients.length; index += 1) {
+      coefficients[index] = rationalNegate(coefficients[index]);
+    }
+  }
+  if (coefficients.some((value) => value.n <= 0n)) {
+    throw new Error("Reaction cannot be balanced with positive coefficients");
+  }
+  let denominator = 1n;
+  for (const coefficient of coefficients) {
+    denominator = denominator / bigintGcd(denominator, coefficient.d) * coefficient.d;
+  }
+  let integers = coefficients.map((value) => value.n * (denominator / value.d));
+  const commonDivisor = integers.reduce(bigintGcd);
+  integers = integers.map((value) => value / commonDivisor);
+  if (integers.some((value) => value > BigInt(Number.MAX_SAFE_INTEGER))) {
+    throw new RangeError("Stoichiometric coefficients exceed JavaScript's safe integer range");
+  }
+  const participants = formulas.map((formula, index) => ({
+    molecule: formula,
+    stoichiometric_coefficient: Number(integers[index]),
+  }));
+  const splitAt = reactantFormulas.length;
+  return new Reaction({
+    id: "BALANCED",
+    name: "Balanced reaction",
+    reaction_type: "balanced",
+    reversible,
+    reactants: participants.slice(0, splitAt),
+    products: participants.slice(splitAt),
+    conditions: {},
+    notes: "",
+  });
+}
+
+function executeBalanceCommand(text) {
+  const match = text.match(
+    /^\s*balance\s+(.+?)\s*(<->|->)\s*(.+?)(?:\s*\/\/\s*(reversible|irreversible)\s*)?$/i,
+  );
+  if (!match) {
+    throw new Error("Usage: balance <reactants> ->|<-> <products> [//reversible|//irreversible]");
+  }
+  const [, reactants, arrow, products, direction] = match;
+  const reversible = direction ? direction.toLowerCase() === "reversible" : arrow === "<->";
+  return balance_stoichiometry(reactants, products, reversible);
+}
+
 export const SOURCES = {
   elements: [ELEMENTS, elementKeys],
   molecules: [MOLECULES, moleculeKeys],
@@ -849,6 +1010,10 @@ export async function execute(arguments_) {
   const command = args[0];
   if (["help", "?"].includes(command.toLowerCase())) return HELP;
   if (command.toLowerCase() === "sorry") return "\u001b[34mIt's ok, everybody makes mistakes👌\u001b[0m";
+  if (command.toLowerCase() === "balance") {
+    try { return executeBalanceCommand(args.join(" ")); }
+    catch (error) { return formatError(error.message); }
+  }
   if (command === "conditions") return args.length === 1 ? currentConditions() : "Usage: conditions";
   if (command === "set") {
     if (args.length < 2) return "Usage: set temperature|pressure|catalysts <value>";
@@ -1147,7 +1312,8 @@ export async function process_lines(lines) {
         break;
       }
     }
-    const cleaned = line.slice(0, commentStart).trim();
+    const hasBalanceDirection = /^\s*balance\b.*\/\/\s*(?:reversible|irreversible)\s*$/i.test(line);
+    const cleaned = (hasBalanceDirection ? line : line.slice(0, commentStart)).trim();
     if (!cleaned) continue;
     if (isBlockHeader(cleaned)) {
       const end = findBlockEnd(joined, index + 1);
@@ -1175,6 +1341,7 @@ export function reset_session() {
 
 export const executeQueryText = execute_query_text;
 export const executeQuery = execute_query;
+export const balanceStoichiometry = balance_stoichiometry;
 export const formatReturnTable = format_return_table;
 
 export const HELP = `ChemQL JavaScript
@@ -1191,6 +1358,7 @@ FILTERS
   =, >, <, >=, <=, like, like!, has, and, or, ( )
 
 REACTIONS
+  balance <reactants> ->|<-> <products> [//reversible|//irreversible]
   set temperature <valueC|valueF|valueK|standard|room>
   set pressure <valuePa|valuebar|valueatm|standard|room>
   set catalysts <names...>

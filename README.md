@@ -75,14 +75,14 @@ The command API also supports `source`, `list all`, `set temperature`,
 `conditions`, `react`, and reaction balancing:
 
 ```text
-balance O2 + H2 -> H2O //reversible
-balance O2 + H2 <-> H2O //irreversible
+balance O2 + H2 -> H2O
+balance O2 + H2 <-> H2O
 ```
 
 `balance_stoichiometry(reactants, products, reversible = null)` returns a
 `Reaction` with the smallest positive integer coefficients. The optional
-annotations override the direction shown by the input arrow; without an
-annotation, `->` is irreversible and `<->` is reversible.
+arrow determines reaction direction: `->` is irreversible and `<->` is
+reversible. `//` always starts a comment.
 
 ## JavaScript hybrid mode
 

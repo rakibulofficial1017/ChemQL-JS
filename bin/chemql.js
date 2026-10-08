@@ -4,7 +4,7 @@ import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { HELP, execute_query_text, process_lines, reset_session } from "../src/index.js";
 
-const version = "0.2.0";
+const version = "0.2.1";
 const history = [];
 
 function render(value) {

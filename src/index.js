@@ -289,14 +289,15 @@ export function balance_stoichiometry(reactants, products, reversible = null) {
 }
 
 function executeBalanceCommand(text) {
-  const match = text.match(
-    /^\s*balance\s+(.+?)\s*(<->|->)\s*(.+?)(?:\s*\/\/\s*(reversible|irreversible)\s*)?$/i,
+  const statement = text.split("//", 1)[0].trimEnd();
+  const match = statement.match(
+    /^\s*balance\s+(.+?)\s*(<->|->)\s*(.+?)\s*$/,
   );
   if (!match) {
-    throw new Error("Usage: balance <reactants> ->|<-> <products> [//reversible|//irreversible]");
+    throw new Error("Usage: balance <reactants> ->|<-> <products>");
   }
-  const [, reactants, arrow, products, direction] = match;
-  const reversible = direction ? direction.toLowerCase() === "reversible" : arrow === "<->";
+  const [, reactants, arrow, products] = match;
+  const reversible = arrow === "<->";
   return balance_stoichiometry(reactants, products, reversible);
 }
 
@@ -1312,8 +1313,7 @@ export async function process_lines(lines) {
         break;
       }
     }
-    const hasBalanceDirection = /^\s*balance\b.*\/\/\s*(?:reversible|irreversible)\s*$/i.test(line);
-    const cleaned = (hasBalanceDirection ? line : line.slice(0, commentStart)).trim();
+    const cleaned = line.slice(0, commentStart).trim();
     if (!cleaned) continue;
     if (isBlockHeader(cleaned)) {
       const end = findBlockEnd(joined, index + 1);
@@ -1358,7 +1358,7 @@ FILTERS
   =, >, <, >=, <=, like, like!, has, and, or, ( )
 
 REACTIONS
-  balance <reactants> ->|<-> <products> [//reversible|//irreversible]
+  balance <reactants> ->|<-> <products>
   set temperature <valueC|valueF|valueK|standard|room>
   set pressure <valuePa|valuebar|valueatm|standard|room>
   set catalysts <names...>

@@ -62,7 +62,7 @@ test("reactions support condition setup and product lookup", async () => {
   assert.match(await execute(["conditions"]), /Catalysts: iron/);
 });
 
-test("balances reactions through the function API and ChemQL syntax", async () => {
+test("balances reactions through the function API and arrow-based ChemQL syntax", async () => {
   const apiReaction = balance_stoichiometry(["O2", "H2"], ["H2O"], true);
   assert.ok(apiReaction instanceof Reaction);
   assert.deepEqual(
@@ -75,15 +75,15 @@ test("balances reactions through the function API and ChemQL syntax", async () =
   );
   assert.equal(apiReaction.reversible, true);
 
-  const reversible = await process_lines(["balance O2 + H2 -> H2O //reversible"]);
-  assert.equal(reversible.reversible, true);
-  assert.match(reversible.equation, /1 O₂ \+ 2 H₂ ⇌ 2 H₂O/);
-
-  const irreversible = await execute_query_text(
-    "balance O2 + H2 <-> H2O //irreversible",
-  );
+  const irreversible = await process_lines(["balance O2 + H2 -> H2O //reversible"]);
   assert.equal(irreversible.reversible, false);
   assert.match(irreversible.equation, /1 O₂ \+ 2 H₂ → 2 H₂O/);
+
+  const reversible = await execute_query_text(
+    "balance O2 + H2 <-> H2O //irreversible",
+  );
+  assert.equal(reversible.reversible, true);
+  assert.match(reversible.equation, /1 O₂ \+ 2 H₂ ⇌ 2 H₂O/);
 
   const grouped = balance_stoichiometry(
     ["Ca(OH)2", "H3PO4"],
